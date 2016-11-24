@@ -19,6 +19,12 @@ def conv(prev, kernel_shape, bias_shape, stride, padding, scope,
             return biased
 
 
+def create_conv_weights(kernel_shape, bias_shape, scope):
+    with tf.variable_scope(scope):
+        weights = tf.get_variable('weights', kernel_shape)
+        bias = tf.get_variable('biases', bias_shape)
+
+
 def maxpool(prev, kernel_shape, stride, padding, scope):
     with tf.name_scope(scope):
         return tf.nn.max_pool(prev, kernel_shape, stride, padding)
@@ -43,7 +49,17 @@ def residual_block(prev, bottleneck_depth, output_depth, survival_rate,
                        padding='SAME',
                        scope='shortcut')
 
-        def perturbation(reuse=False):
+        create_conv_weights(kernel_shape=[1, 1, prev_depth, bottleneck_depth],
+                            bias_shape=[bottleneck_depth],
+                            scope='bottleneck_1x1')
+        create_conv_weights(kernel_shape=[3, 3, bottleneck_depth, bottleneck_depth],
+                            bias_shape=[bottleneck_depth],
+                            scope='bottleneck_3x3')
+        create_conv_weights(kernel_shape=[1, 1, bottleneck_depth, output_depth],
+                            bias_shape=[output_depth],
+                            scope='output_1x1')
+
+        def perturbation(reuse=True):
             conv2d = conv(prev=prev,
                           kernel_shape=[1, 1, prev_depth, bottleneck_depth],
                           bias_shape=[bottleneck_depth],
@@ -67,12 +83,9 @@ def residual_block(prev, bottleneck_depth, output_depth, survival_rate,
                           use_relu=False,
                           reuse=reuse)
             return conv2d
-            add = tf.add(res, conv2d)
-            return tf.nn.relu(add)
-        perturbation()  # create variables for later reuse
 
         def not_dropped():
-            conv2d = perturbation(reuse=True)
+            conv2d = perturbation()
             add = tf.add(res, conv2d)
             return tf.nn.relu(add)
 
@@ -81,7 +94,7 @@ def residual_block(prev, bottleneck_depth, output_depth, survival_rate,
 
         def test():
             with tf.name_scope('test'):
-                conv2d = perturbation(reuse=True)
+                conv2d = perturbation()
                 mul = tf.mul(conv2d, survival_rate)
                 add = tf.add(res, mul)
                 return tf.nn.relu(add)
